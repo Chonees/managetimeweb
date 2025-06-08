@@ -1,0 +1,81 @@
+/* Estilos personalizados para mejorar el contraste en ManageTime Admin */
+
+/* Estilos para iconos en la barra lateral */
+.MuiListItemIcon-root {
+  color: #fff3e5 !important; /* Color crema para todos los iconos */
+  min-width: 40px;
+}
+
+/* Estilos para botones en la barra lateral */
+.MuiListItemButton-root {
+  border-radius: 8px;
+  margin: 4px 8px;
+  padding: 8px 16px;
+}
+
+.MuiListItemButton-root:hover {
+  background-color: rgba(255, 243, 229, 0.15) !important;
+}
+
+.MuiListItemButton-root:hover .MuiListItemIcon-root,
+.MuiListItemButton-root:hover .MuiListItemText-primary {
+  color: #ffffff !important;
+}
+
+/* Estilos para el texto en la barra lateral */
+.MuiListItemText-primary {
+  color: #fff3e5 !important;
+}
+
+/* Estilos para el divisor en la barra lateral */
+.MuiDivider-root {
+  background-color: rgba(255, 243, 229, 0.2) !important;
+}
+
+/* Estilos para botones de iconos */
+.MuiIconButton-root {
+  color: #fff3e5 !important;
+}
+
+.MuiIconButton-root:hover {
+  background-color: rgba(255, 243, 229, 0.15) !important;
+}
+
+/* Estilos para tarjetas y contenedores */
+.MuiCard-root, .MuiPaper-root {
+  border: 1px solid rgba(255, 243, 229, 0.2);
+  border-radius: 12px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.MuiCard-root:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* Estilos para títulos */
+.MuiTypography-h4, .MuiTypography-h5, .MuiTypography-h6 {
+  color: #fff3e5 !important;
+  font-weight: 500;
+}
+
+/* Estilos para botones */
+.MuiButton-outlined {
+  border-color: #fff3e5 !important;
+  color: #fff3e5 !important;
+}
+
+.MuiButton-outlined:hover {
+  border-color: #ffffff !important;
+  background-color: rgba(255, 243, 229, 0.1) !important;
+}
+
+/* Estilos para avatares */
+.MuiAvatar-root {
+  border: 2px solid #fff3e5;
+}
+
+/* Estilos para hover en elementos interactivos */
+.MuiListItem-button:hover {
+  background-color: rgba(255, 243, 229, 0.15) !important;
+}
