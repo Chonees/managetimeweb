@@ -15,6 +15,7 @@ import DashboardPage from './pages/DashboardPage';
 import UsersPage from './pages/UsersPage';
 import TasksPage from './pages/TasksPage';
 import LocationsPage from './pages/LocationsPage';
+import ActivitiesPage from './pages/ActivitiesPage';
 
 // Componente para rutas protegidas con mejor manejo visual
 const ProtectedRoute = ({ children }) => {
@@ -91,6 +92,9 @@ function App() {
               
               {/* Control de ubicaciones */}
               <Route path="locations" element={<LocationsPage />} />
+              
+              {/* Registro de actividades */}
+              <Route path="actividades" element={<ActivitiesPage />} />
               
               {/* Redirigir rutas desconocidas al dashboard */}
               <Route path="*" element={<Navigate to="/" replace />} />

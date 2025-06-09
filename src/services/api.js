@@ -123,7 +123,7 @@ export const locationService = {
   // Obtener ubicaciones de un usuario específico
   getUserLocations: (userId) => api.get(`/locations/user/${userId}`),
   // Obtener ubicaciones de usuarios activos
-  getActiveUserLocations: () => api.get('/locations/active'),
+  getActiveUserLocations: () => api.get('/users/active-locations'),
   // Obtener historial de ubicaciones con tareas
   getLocationHistoryWithTasks: (userId) => api.get(`/locations/history-with-tasks/${userId}`),
 };
@@ -141,7 +141,7 @@ export const taskService = {
 // Servicio para actividades
 export const activityService = {
   getAdminActivities: (page = 1, limit = 100, sort = '-createdAt') => 
-    api.get(`/users/activities?page=${page}&limit=${limit}&sort=${sort}`),
+    api.get(`/activities/admin/all?page=${page}&limit=${limit}&sort=${sort}&exclude=location_check`),
 };
 
 export default api;
