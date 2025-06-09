@@ -37,10 +37,14 @@ import {
   VisibilityOff as VisibilityOffIcon
 } from '@mui/icons-material';
 import { userService } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 const UsersPage = () => {
+  const { currentUser, isAuthenticated } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [openDialog, setOpenDialog] = useState(false);
@@ -61,21 +65,56 @@ const UsersPage = () => {
 
   // Cargar la lista de usuarios
   const fetchUsers = async () => {
+    if (!isAuthenticated) {
+      setLoading(false);
+      setError('No autenticado');
+      return;
+    }
+    
     try {
       setLoading(true);
+      setError(null);
       const response = await userService.getAll();
       setUsers(response.data);
+      // Resetear contador de reintentos al tener éxito
+      setRetryCount(0);
     } catch (error) {
       console.error('Error al obtener usuarios:', error);
-      showSnackbar('Error al cargar usuarios', 'error');
+      
+      // Incrementar contador de reintentos
+      setRetryCount(prev => prev + 1);
+      
+      // Preparar mensaje de error detallado
+      const errorMessage = error.response
+        ? `Error ${error.response.status}: ${error.response.data?.message || 'Error desconocido'}`
+        : 'Error de conexión con el servidor';
+      
+      setError(errorMessage);
+      showSnackbar(errorMessage, 'error');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchUsers();
-  }, []);
+    // Solo cargar usuarios si el usuario está autenticado
+    if (isAuthenticated) {
+      fetchUsers();
+    }
+  }, [isAuthenticated]);
+
+  // Evitar reintentos infinitos
+  useEffect(() => {
+    if (retryCount > 0 && retryCount < 3 && error) {
+      const timer = setTimeout(() => {
+        if (isAuthenticated) {
+          console.log(`Reintento #${retryCount} de carga de usuarios...`);
+          fetchUsers();
+        }
+      }, 5000); // Esperar 5 segundos entre reintentos
+      return () => clearTimeout(timer);
+    }
+  }, [retryCount, error, isAuthenticated]);
 
   // Mostrar mensaje de notificación
   const showSnackbar = (message, severity = 'success') => {
@@ -173,11 +212,15 @@ const UsersPage = () => {
   };
 
   // Cambiar estado de usuario (activo/inactivo)
-  const handleToggleUserStatus = async (userId) => {
+  const handleToggleUserStatus = async (userId, currentIsActive) => {
     try {
-      await userService.toggleActive(userId);
+      // Invertimos el estado actual para activar/desactivar
+      const newIsActive = !currentIsActive;
+      console.log(`Cambiando estado de usuario ${userId} a: ${newIsActive ? 'Activo' : 'Inactivo'}`);
+      
+      await userService.toggleActive(userId, newIsActive);
       fetchUsers();
-      showSnackbar('Estado de usuario actualizado correctamente');
+      showSnackbar(`Usuario ${newIsActive ? 'activado' : 'desactivado'} correctamente`);
     } catch (error) {
       console.error('Error al cambiar estado del usuario:', error);
       showSnackbar('Error al actualizar estado del usuario', 'error');
@@ -229,6 +272,22 @@ const UsersPage = () => {
                     <CircularProgress sx={{ my: 3 }} />
                   </TableCell>
                 </TableRow>
+              ) : error ? (
+                <TableRow>
+                  <TableCell colSpan={5} align="center">
+                    <Alert severity="error" sx={{ my: 2 }}>
+                      {error}
+                      <Button 
+                        variant="outlined" 
+                        size="small" 
+                        onClick={fetchUsers} 
+                        sx={{ ml: 2 }}
+                      >
+                        Reintentar
+                      </Button>
+                    </Alert>
+                  </TableCell>
+                </TableRow>
               ) : users.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} align="center">
@@ -268,7 +327,7 @@ const UsersPage = () => {
                         <Tooltip title={user.isActive ? 'Desactivar usuario' : 'Activar usuario'}>
                           <IconButton
                             aria-label={user.isActive ? 'desactivar' : 'activar'}
-                            onClick={() => handleToggleUserStatus(user._id)}
+                            onClick={() => handleToggleUserStatus(user._id, user.isActive)}
                             color={user.isActive ? 'error' : 'success'}
                           >
                             {user.isActive ? <BlockIcon /> : <CheckCircleIcon />}
