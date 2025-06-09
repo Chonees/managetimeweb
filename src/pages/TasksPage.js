@@ -26,7 +26,10 @@ import {
   CircularProgress,
   Alert,
   Snackbar,
-  Tooltip
+  Tooltip,
+  Divider,
+  Switch,
+  FormControlLabel
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -36,9 +39,11 @@ import {
   CheckCircle as CheckCircleIcon,
   HourglassEmpty as PendingIcon,
   Assignment as TaskIcon,
-  Save as SaveIcon
+  Save as SaveIcon,
+  MyLocation as LocationIcon
 } from '@mui/icons-material';
 import { taskService, userService } from '../services/api';
+import TaskPerimeterMap from '../components/TaskPerimeterMap';
 
 const TasksPage = () => {
   const [tasks, setTasks] = useState([]);
@@ -50,11 +55,19 @@ const TasksPage = () => {
   const [taskForm, setTaskForm] = useState({
     title: '',
     description: '',
-    location: { name: '', latitude: '', longitude: '' },
+    location: { 
+      name: '', 
+      latitude: '', 
+      longitude: '', 
+      type: 'Point',
+      coordinates: [0, 0]
+    },
+    radius: 1.0, // Radio de perímetro en km (valor por defecto)
     fileNumber: '',
     timeLimit: '',
     keywords: '',
-    assignedTo: ''
+    handsFreeMode: false, // Modo manos libres
+    userIds: [] // Múltiples usuarios (nuevo modelo)
   });
   const [editMode, setEditMode] = useState(false);
   const [currentTaskId, setCurrentTaskId] = useState(null);
@@ -116,32 +129,99 @@ const TasksPage = () => {
     setPage(0);
   };
 
-  // Abrir formulario para crear tarea
+  // Abrir diálogo para crear tarea
   const handleOpenCreateDialog = () => {
+    // Intentar obtener la ubicación actual
+    let initialLocation = {
+      latitude: '',
+      longitude: '',
+      name: '',
+      coordinates: []
+    };
+    
+    // Iniciar con ubicación por defecto (centro de Buenos Aires)
     setTaskForm({
       title: '',
       description: '',
-      location: { name: '', latitude: '', longitude: '' },
+      location: {
+        latitude: -34.61315,
+        longitude: -58.37723,
+        name: 'Buenos Aires, Argentina',
+        coordinates: [-58.37723, -34.61315]
+      },
+      radius: 1.0,
       fileNumber: '',
       timeLimit: '',
       keywords: '',
-      assignedTo: ''
+      handsFreeMode: false,
+      userIds: []
     });
     setEditMode(false);
+    setCurrentTaskId(null);
     setOpenDialog(true);
   };
 
   // Abrir formulario para editar tarea
   const handleOpenEditDialog = (task) => {
+    // Preparar la estructura de coordenadas
+    let locationData = { name: '', latitude: '', longitude: '', type: 'Point', coordinates: [0, 0] };
+    
+    // Si hay ubicación en la tarea, usarla
+    if (task.location) {
+      if (task.location.coordinates && Array.isArray(task.location.coordinates)) {
+        // Extraer coordenadas del formato del backend
+        locationData = {
+          ...task.location,
+          latitude: task.location.coordinates[1] || 0, // En GeoJSON es [lng, lat]
+          longitude: task.location.coordinates[0] || 0
+        };
+      } else if (task.location.latitude && task.location.longitude) {
+        // Si viene en formato plano de latitud/longitud
+        locationData = {
+          name: task.location.name || '',
+          latitude: task.location.latitude,
+          longitude: task.location.longitude,
+          type: 'Point',
+          coordinates: [task.location.longitude, task.location.latitude]
+        };
+      }
+      
+      // Si hay nombre de ubicación
+      if (task.locationName && !locationData.name) {
+        locationData.name = task.locationName;
+      }
+    }
+    
+    // Preparar múltiples usuarios
+    const userIds = [];
+    if (task.userIds && Array.isArray(task.userIds)) {
+      task.userIds.forEach(user => {
+        if (typeof user === 'string') {
+          userIds.push(user);
+        } else if (user && user._id) {
+          userIds.push(user._id);
+        }
+      });
+    } else if (task.userId) {
+      // Compatibilidad con modelo anterior
+      const userId = typeof task.userId === 'object' ? task.userId._id : task.userId;
+      if (userId && !userIds.includes(userId)) {
+        userIds.push(userId);
+      }
+    }
+    
     setTaskForm({
       title: task.title || '',
       description: task.description || '',
-      location: task.location || { name: '', latitude: '', longitude: '' },
+      location: locationData,
+      radius: task.radius || 1.0,
       fileNumber: task.fileNumber || '',
       timeLimit: task.timeLimit || '',
-      keywords: Array.isArray(task.keywords) ? task.keywords.join(', ') : task.keywords || '',
-      assignedTo: task.assignedTo?._id || task.assignedTo || ''
+      keywords: task.keywords || '',
+      handsFreeMode: !!task.handsFreeMode,
+      userIds: userIds
     });
+    
     setCurrentTaskId(task._id);
     setEditMode(true);
     setOpenDialog(true);
@@ -155,19 +235,62 @@ const TasksPage = () => {
   // Manejar cambios en el formulario
   const handleFormChange = (e) => {
     const { name, value } = e.target;
+    
     if (name.startsWith('location.')) {
       const locationField = name.split('.')[1];
+      let updatedLocation = {
+        ...taskForm.location,
+        [locationField]: value
+      };
+      
+      // Si cambian lat o lng, actualizar el array de coordenadas
+      if (locationField === 'latitude' || locationField === 'longitude') {
+        updatedLocation.coordinates = [
+          locationField === 'longitude' ? parseFloat(value) || 0 : taskForm.location.longitude || 0,
+          locationField === 'latitude' ? parseFloat(value) || 0 : taskForm.location.latitude || 0
+        ];
+      }
+      
       setTaskForm({
         ...taskForm,
-        location: {
-          ...taskForm.location,
-          [locationField]: value
-        }
+        location: updatedLocation
+      });
+    } else if (name === 'userIds') {
+      // Manejar selección múltiple
+      setTaskForm({
+        ...taskForm,
+        userIds: value
+      });
+    } else if (name === 'handsFreeMode') {
+      // Manejar checkbox
+      setTaskForm({
+        ...taskForm,
+        handsFreeMode: e.target.checked
       });
     } else {
       setTaskForm({
         ...taskForm,
         [name]: value
+      });
+    }
+  };
+  
+  // Manejar cambios desde el mapa de perímetro
+  const handlePerimeterChange = (changes) => {
+    if (changes.radius) {
+      setTaskForm({
+        ...taskForm,
+        radius: changes.radius
+      });
+    }
+    
+    if (changes.location) {
+      setTaskForm({
+        ...taskForm,
+        location: {
+          ...taskForm.location,
+          ...changes.location
+        }
       });
     }
   };
@@ -203,30 +326,46 @@ const TasksPage = () => {
         showSnackbar('El título y el número de archivo son obligatorios', 'error');
         return;
       }
-
-      // Preparar datos de la tarea
+      
+      // Verificar coordenadas
+      if (!taskForm.location.latitude || !taskForm.location.longitude) {
+        showSnackbar('Por favor ingrese coordenadas válidas', 'error');
+        return;
+      }
+      
+      // Preparar objeto para el backend
       const taskData = {
         ...taskForm,
-        keywords: taskForm.keywords ? taskForm.keywords.split(',').map(k => k.trim()) : [],
-        timeLimit: taskForm.timeLimit ? parseInt(taskForm.timeLimit, 10) : undefined
+        // Asegurar que la ubicación tenga el formato correcto para MongoDB
+        location: {
+          type: 'Point',
+          coordinates: [parseFloat(taskForm.location.longitude), parseFloat(taskForm.location.latitude)]
+        },
+        locationName: taskForm.location.name,
+        // Asegurar que el radio sea un número
+        radius: parseFloat(taskForm.radius) || 1.0,
+        // Asegurar que timeLimit sea un número
+        timeLimit: taskForm.timeLimit ? parseInt(taskForm.timeLimit) : 0,
       };
+      
+      console.log('Datos a enviar:', taskData);
 
       if (editMode) {
         await taskService.update(currentTaskId, taskData);
-        showSnackbar('Tarea actualizada correctamente');
+        showSnackbar('Tarea actualizada exitosamente');
       } else {
         await taskService.create(taskData);
-        showSnackbar('Tarea creada correctamente');
+        showSnackbar('Tarea creada exitosamente');
       }
-      
+
       handleCloseDialog();
-      fetchData();
+      fetchData(); // Recargar lista de tareas
     } catch (error) {
       console.error('Error al guardar tarea:', error);
-      showSnackbar(error.response?.data?.message || 'Error al guardar la tarea', 'error');
+      showSnackbar(`Error al guardar la tarea: ${error.response?.data?.message || error.message}`, 'error');
     }
   };
-
+  
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
@@ -295,13 +434,34 @@ const TasksPage = () => {
                         />
                       </TableCell>
                       <TableCell>
-                        {task.assignedTo ? 
-                          (typeof task.assignedTo === 'object' ? 
-                            task.assignedTo.username : 
-                            users.find(u => u._id === task.assignedTo)?.username || 'Usuario no encontrado'
-                          ) : 
-                          'Sin asignar'
-                        }
+                        {task.userIds && task.userIds.length > 0 ? (
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                            {task.userIds.map(userId => {
+                              // Manejar caso donde userId puede ser objeto o string
+                              const id = typeof userId === 'object' ? userId._id : userId;
+                              const user = users.find(u => u._id === id);
+                              return (
+                                <Chip 
+                                  key={id} 
+                                  label={user ? user.username : 'Usuario'} 
+                                  size="small" 
+                                  variant="outlined"
+                                />
+                              );
+                            })}
+                          </Box>
+                        ) : task.userId ? (
+                          // Compatibilidad con el modelo anterior
+                          <Chip 
+                            label={typeof task.userId === 'object' ? 
+                              task.userId.username : 
+                              users.find(u => u._id === task.userId)?.username || 'Usuario'} 
+                            size="small" 
+                            variant="outlined"
+                          />
+                        ) : (
+                          <em>Sin asignar</em>
+                        )}
                       </TableCell>
                       <TableCell>
                         {task.location?.name || 'No especificada'}
@@ -346,10 +506,10 @@ const TasksPage = () => {
 
       {/* Modal para crear/editar tarea */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="md" fullWidth>
-        <DialogTitle>
+        <DialogTitle sx={{ bgcolor: 'background.dark', color: 'white', pb: 2 }}>
           {editMode ? 'Editar Tarea' : 'Crear Nueva Tarea'}
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ bgcolor: '#333333', color: 'white', p: 3 }}>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12} md={6}>
               <TextField
@@ -408,56 +568,28 @@ const TasksPage = () => {
                 inputProps={{ min: 0 }}
               />
             </Grid>
-            <Grid item xs={12}>
-              <Typography variant="subtitle1" gutterBottom>
-                Ubicación
-              </Typography>
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                label="Nombre de ubicación"
-                name="location.name"
-                value={taskForm.location?.name || ''}
-                onChange={handleFormChange}
-                margin="dense"
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                label="Latitud"
-                name="location.latitude"
-                type="number"
-                value={taskForm.location?.latitude || ''}
-                onChange={handleFormChange}
-                margin="dense"
-                inputProps={{ step: 'any' }}
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                label="Longitud"
-                name="location.longitude"
-                type="number"
-                value={taskForm.location?.longitude || ''}
-                onChange={handleFormChange}
-                margin="dense"
-                inputProps={{ step: 'any' }}
-              />
-            </Grid>
-            <Grid item xs={12}>
+            <Grid item xs={12} md={6}>
               <FormControl fullWidth margin="dense">
-                <InputLabel>Asignar a</InputLabel>
+                <InputLabel>Asignar usuarios</InputLabel>
                 <Select
-                  name="assignedTo"
-                  value={taskForm.assignedTo}
+                  name="userIds"
+                  multiple
+                  value={taskForm.userIds}
                   onChange={handleFormChange}
-                  label="Asignar a"
+                  label="Asignar usuarios"
+                  renderValue={(selected) => (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {selected.map((userId) => {
+                        const user = users.find(u => u._id === userId);
+                        return (
+                          <Chip key={userId} label={user ? user.username : userId} size="small" />
+                        );
+                      })}
+                    </Box>
+                  )}
                 >
-                  <MenuItem value="">
-                    <em>Sin asignar</em>
+                  <MenuItem value="" disabled>
+                    <em>Seleccione uno o más usuarios</em>
                   </MenuItem>
                   {users.filter(user => user.isActive).map(user => (
                     <MenuItem key={user._id} value={user._id}>
@@ -467,16 +599,47 @@ const TasksPage = () => {
                 </Select>
               </FormControl>
             </Grid>
+            <Grid item xs={12} md={6}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    id="handsFreeMode"
+                    name="handsFreeMode"
+                    checked={taskForm.handsFreeMode}
+                    onChange={handleFormChange}
+                    color="primary"
+                  />
+                }
+                label="Modo manos libres (activación por voz)"
+              />
+            </Grid>
           </Grid>
+          
+          <Box sx={{ width: '100%', pt: 4, pb: 3 }}>
+            <Typography variant="h6" sx={{ px: 2, mb: 2, color: 'white' }}>
+              Perímetro de la Tarea
+            </Typography>
+            <TaskPerimeterMap 
+              location={taskForm.location}
+              radius={taskForm.radius}
+              onChange={handlePerimeterChange}
+            />
+          </Box>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialog}>Cancelar</Button>
+        <DialogActions sx={{ bgcolor: '#333333', justifyContent: 'flex-end', p: 2 }}>
           <Button 
-            onClick={handleSubmitTask} 
+            onClick={handleCloseDialog} 
+            sx={{ color: 'white' }}
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleSubmitTask}
             variant="contained"
+            sx={{ bgcolor: '#4CAF50', '&:hover': { bgcolor: '#388E3C' } }}
             startIcon={<SaveIcon />}
           >
-            Guardar
+            {editMode ? 'Actualizar' : 'Guardar'}
           </Button>
         </DialogActions>
       </Dialog>
